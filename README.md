@@ -24,7 +24,7 @@ make DC=ldc2
 * Basic control-flow (`if`, `elif`, `else`, `while`, `break`, `continue` and `return`);
 * Basic arithmetic operations (`+`, `-`, `*` and `/`);
 * Simple comparision operations (`==`, `!=`, `<`, `>`, `<=`, `>=`, `and` and `or`);
-* Tiny core library (`print`, `read`, `to_int`, `to_str`, `append`, `pop` and `len`);
+* Tiny optional core library (~55 lines of code);
 * Very simple error reporting;
 
 ## Example

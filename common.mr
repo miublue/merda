@@ -1,0 +1,3 @@
+extern("./lib.so", "read", "write", "read_file", "write_file")
+extern("./lib.so", "append", "read", "len", "to_int", "to_str")
+

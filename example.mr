@@ -1,34 +1,35 @@
+import("common.mr")
 
-func other_fn(val) {
-  print("abs(a) = ", if val < 0 { -val } else { val }, "\n")
+func some_fn(val) {
+  write("abs(a) = ", if val < 0 { -val } else { val }, "\n")
 }
 
 func add(a, b) {
   if a > 0 {
     return a + b
   }
-  other_fn(a)
+  some_fn(a)
   return a + b
 }
 
-print(add(-33, -36), "\n")
+write(add(-33, -36), "\n")
 
 i = 0
 while (i = i + 1) < 10 {
   if i == 3 and !nil { continue }
   if i == 7 { break }
-  print(i, "\n")
+  write(i, "\n")
 }
-print("final i = ", i, "\n")
+write("final i = ", i, "\n")
 
 lst=[1, 2, 3]
-print(lst, "\n")
+write(lst, "\n")
 lst[0] = 69
-print(lst, "\n")
+write(lst, "\n")
 lst = append(lst, ["HELLO", 420])
-print(lst, "\n")
-print(lst[len(lst)-1][1], "\n")
+write(lst, "\n")
+write(lst[len(lst)-1][1], "\n")
 
 n = to_int(read("what is your age? "))
-print("your age + 69 is ", n + 69, "\n")
+write("your age + 69 is ", n + 69, "\n")
 

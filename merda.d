@@ -1,10 +1,8 @@
-import std.stdio, std.ascii, std.array, std.conv,
-       std.file, std.string, std.algorithm,
-       core.stdc.stdlib : exit;
-
-enum : ubyte { NONE, RETURN, BREAK, CONTINUE }
-enum : ubyte { T_NIL, T_INT, T_STR, T_ARR }
+import std.stdio, std.ascii, std.array, std.conv, std.file, std.string, std.algorithm,
+       core.sys.posix.dlfcn, core.stdc.stdlib : exit;
 struct Range { ulong start, end; }
+enum : ulong { NONE, RETURN, BREAK, CONTINUE }
+enum : ubyte { T_NIL, T_INT, T_STR, T_ARR }
 struct Value {
   ubyte t; union { long l; string s; Value[] a; }
   this(ubyte t_) { t=t_; }
@@ -17,8 +15,7 @@ struct Value {
     t==o.t? (t==T_INT? l==o.l : t==T_STR? s==o.s : t==T_ARR? a==o.a : true) : false;
 }
 struct Func { Range range; string[] args; Value[string] vars; }
-
-string[] parse(string text) {
+string[] tokenize(string text) {
   string[] res; string tok; int is_blk;
   foreach (chr; text) {
     if (is_blk == 2 && chr == '\n') is_blk = 0, tok = "";
@@ -43,77 +40,52 @@ string[] parse(string text) {
   return res.filter!(x => x.strip.length != 0).array;
 }
 string escapeString(string s) {
-  auto r="", cs = ['n': '\n', 'r': '\r', 't': '\t'];
+  auto r="", cs = ['n': '\n', 'r': '\r', 't': '\t', 'e': '\033'];
   for (int i = 0; i < s.length; ++i)
     if (s[i] == '\\') if (++i >= s.length) break;
                       else r ~= (s[i] in cs)? cs[s[i]] : s[i];
     else r ~= s[i];
   return r;
 }
-Value extn_to_str(Value[] args, bool is_arr = 0) {
-  auto s = is_arr? "[" : "";
-  foreach (i, arg; args) {
-    if (is_arr && i > 0) s ~= ", "; // HOW DO YOU LIKE THAT HUAUHUAHUHUUHAUHA
-    s ~= arg.t==T_INT? arg.l.to!string : arg.t==T_STR? (is_arr?'\"'~arg.s~'\"':arg.s)
-                     : arg.t==T_ARR? extn_to_str(arg.a, true).s : "nil";
+Value merda_extern(Value[] args) {
+  if (args.length < 2 || args[0].t != T_STR) error("extern expects library path and func names");
+  libs ~= dlopen(args[0].s.toStringz, RTLD_LAZY);
+  if (libs[$-1] is null) error("could not load library '%s'".format(args[0].s));
+  foreach (fn; args[1..$]) {
+    extn[fn.s] = cast(Value function(Value[]))dlsym(libs[$-1], ("merda_"~fn.s).toStringz);
+    auto err = dlerror();
+    if (err) error(err.fromStringz.to!string);
   }
-  return Value(is_arr? s ~ "]" : s);
-}
-Value extn_to_int(Value[] args) {
-  if (args.length != 1 || args[0].t != T_STR || !args[0].s.isNumeric)
-    error("to_int failed to parse number");
-  return Value(args[0].s.to!long);
-}
-Value extn_print(Value[] args) {
-  extn_to_str(args).s.write;
   return Value(T_NIL);
 }
-Value extn_read(Value[] args) {
-  extn_print(args);
-  return Value(readln.strip);
+Value merda_import(Value[] args) {
+  if (args.length != 1 || args[0].t != T_STR) error("import expects file paths");
+  foreach (fl; args) {
+    auto start = intp.toks.length;
+    if (!fl.s.exists || fl.s.isDir) error("could not import file '%s'".format(fl.s));
+    intp.toks ~= fl.s.readText.tokenize~"";
+    intp.execRange(Range(start, intp.toks.length-1));
+  }
+  return Value(T_NIL);
 }
-Value extn_append(Value[] args) {
-  if (args.length < 2 || ![T_STR,T_ARR].canFind(args[0].t)) 
-    error("append expected array");
-  if (args[0].t == T_ARR) args[0].a ~= args[1]; 
-  else args[0].s ~= extn_to_str(args[1..$]).s;
-  return args[0];
-}
-Value extn_pop(Value[] args) {
-  if (args.length != 1 || ![T_STR,T_ARR].canFind(args[0].t))
-    error("pop expected array");
-  auto res = args[0].t==T_ARR? args[0].a[$-1] : Value(args[0].s[$-1]~"");
-  if (args[0].t == T_ARR) args[0].a.popBack; else args[0].s.popBack;
-  return res;
-}
-Value extn_len(Value[] args) {
-  if (args.length != 1 || ![T_STR,T_ARR].canFind(args[0].t))
-    error("len expected array");
-  return Value(args[0].t==T_ARR? args[0].a.length : args[0].s.length);
+Value merda_exit(Value[] args) {
+  if (!args.length) merda_exit([Value(1)]);
+  foreach (lib; libs) dlclose(lib);
+  exit(cast(int)args[0].l);
 }
 void error(string err) {
   stderr.writefln("error: %s", err);
-  exit(1);
+  merda_exit([Value(1)]);
 }
+Value function(Value[])[string] extn; void*[] libs; Interpreter intp;
 class Interpreter {
   string[] toks;
-  ulong cur;
-  ubyte loop_out;
-  Value[string] globs;
-  Func[string] funs;
-  Func *cfun;
-  Value function(Value[])[string] extn;
-  this(string[] t) {
+  ulong cur, loop_out;
+  Func[string] funs; Func *cfun;
+  this(string[] t, string[] args) {
     toks = t~"", cur = 0, funs["<GLOBAL>"] = Func(Range(0, toks.length-1));
-    extn = [
-      "to_str": (a) => extn_to_str(a),
-      "to_int": &extn_to_int,
-      "print":  &extn_print,
-      "read":   &extn_read,
-      "append": &extn_append,
-      "pop":    &extn_pop,
-      "len":    &extn_len,
-    ];
+    funs["<GLOBAL>"].vars["args"] = Value(args.map!(a => Value(a)).array);
+    extn = ["extern": &merda_extern, "import": &merda_import, "exit": &merda_exit];
   }
   void consume(string tok) {
     if (toks[cur++] != tok) error("missing '%s'".format(tok));
@@ -141,7 +113,6 @@ class Interpreter {
   Value execWord(string word) {
     if (toks[cur] == "=" && toks[cur+1] != "=") {
       ++cur; auto e = execExpr;
-      if (cfun == &funs["<GLOBAL>"]) return globs[word] = e;
       return cfun.vars[word] = e;
     } else if (toks[cur] == "(") {
       Value[] args;
@@ -153,7 +124,7 @@ class Interpreter {
       error("unknown function '%s'".format(word)); assert(0);
     }
     if (word in cfun.vars) return cfun.vars[word];
-    else if (word in globs) return globs[word];
+    else if (word in funs["<GLOBAL>"].vars) return funs["<GLOBAL>"].vars[word];
     error("unknown variable '%s'".format(word)); assert(0);
   }
   Value execExpr(int p = 0) {
@@ -203,7 +174,7 @@ class Interpreter {
     return res;
   }
   Value execReturn() {
-    ++cur; auto res = execExpr;
+    auto res = toks[++cur] == "}"? Value(T_NIL) : execExpr;
     loop_out = RETURN;
     return res;
   }
@@ -213,10 +184,8 @@ class Interpreter {
   }
   Value execArray() {
     Value[] arr;
-    do {
-      if (toks[++cur] == "]") break;
-      arr ~= execExpr;
-    } while (toks[cur] == ",");
+    do if (toks[++cur] == "]") break; else arr ~= execExpr;
+    while (toks[cur] == ",");
     consume("]");
     return Value(arr);
   }
@@ -229,8 +198,7 @@ class Interpreter {
     if (toks[cur] == "=" && toks[cur+1] != "=") {
       if (arr.t!=T_ARR) error("cannot assign to string index");
       ++cur;
-      auto val = execExpr;
-      return arr.a[idx.l] = val;
+      return arr.a[idx.l] = execExpr;
     }
     return arr.t==T_STR? Value(""~arr.s[idx.l]) : arr.a[idx.l];
   }
@@ -268,10 +236,10 @@ class Interpreter {
     else if (op=="or") return Value(l.isTrue || r.isTrue);
     else if (l.t != T_INT || r.t != T_INT) error("'%s' expected int".format(op));
     switch (op) {
-    case "<":  return Value(l.l <  r.l); case "<=": return Value(l.l <= r.l);
-    case ">":  return Value(l.l >  r.l); case ">=": return Value(l.l >= r.l);
-    case "+":  return Value(l.l +  r.l); case "-":  return Value(l.l -  r.l);
-    case "*":  return Value(l.l *  r.l); case "/":  return Value(l.l /  r.l);
+    case "<": return Value(l.l <  r.l); case "<=": return Value(l.l <= r.l);
+    case ">": return Value(l.l >  r.l); case ">=": return Value(l.l >= r.l);
+    case "+": return Value(l.l +  r.l); case "-":  return Value(l.l -  r.l);
+    case "*": return Value(l.l *  r.l); case "/":  return Value(l.l /  r.l);
     default: error("unknown '%s'".format(op)); assert(0);
     }
   }
@@ -281,5 +249,7 @@ void main(string[] args) {
     stderr.writefln("usage: %s <input>", args[0]);
     return;
   }
-  new Interpreter(args[1].readText.parse).exec;
+  intp = new Interpreter(args[1].readText.tokenize, args[1..$]);
+  intp.exec;
+  merda_exit([Value(0)]);
 }

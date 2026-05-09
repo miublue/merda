@@ -1,5 +1,4 @@
-import std.stdio, std.ascii, std.array, std.conv, std.file, std.string, std.algorithm,
-       core.sys.posix.dlfcn, core.stdc.stdlib : exit;
+import std, core.sys.posix.dlfcn, core.stdc.stdlib : exit;
 struct Range { ulong start, end; }
 enum : ulong { NONE, RETURN, BREAK, CONTINUE }
 enum : ubyte { T_NIL, T_INT, T_STR, T_ARR }
@@ -20,7 +19,7 @@ string[] tokenize(string text) {
   foreach (chr; text) {
     if (is_blk == 2 && chr == '\n') is_blk = 0, tok = "";
     else if (is_blk == 2) continue;
-    if (!is_blk && chr.isWhite) {
+    if (!is_blk && std.ascii.isWhite(chr)) {
       if (!is_blk && tok.strip.length) res ~= tok, tok = "";
       continue;
     } else if (chr == '\"') {
@@ -49,7 +48,7 @@ string escapeString(string s) {
 }
 Value merda_extern(Value[] args) {
   if (args.length < 2 || args[0].t != T_STR) error("extern expects library path and func names");
-  libs ~= dlopen(args[0].s.toStringz, RTLD_LAZY);
+  libs ~= dlopen(args[0].s.expandTilde.toStringz, RTLD_LAZY);
   if (libs[$-1] is null) error("could not load library '%s'".format(args[0].s));
   foreach (fn; args[1..$]) {
     extn[fn.s] = cast(Value function(Value[]))dlsym(libs[$-1], ("merda_"~fn.s).toStringz);
@@ -61,16 +60,16 @@ Value merda_extern(Value[] args) {
 Value merda_import(Value[] args) {
   if (args.length != 1 || args[0].t != T_STR) error("import expects file paths");
   foreach (fl; args) {
-    auto start = intp.toks.length;
-    if (!fl.s.exists || fl.s.isDir) error("could not import file '%s'".format(fl.s));
-    intp.toks ~= fl.s.readText.tokenize~"";
+    auto start = intp.toks.length, file = fl.s.expandTilde;
+    if (!file.exists || file.isDir) error("could not import file '%s'".format(fl.s));
+    intp.toks ~= file.readText.tokenize~"";
     intp.execRange(Range(start, intp.toks.length-1));
   }
   return Value(T_NIL);
 }
 Value merda_exit(Value[] args) {
   if (!args.length) merda_exit([Value(1)]);
-  foreach (lib; libs) dlclose(lib);
+  foreach (lib; libs) if (lib !is null) dlclose(lib);
   exit(cast(int)args[0].l);
 }
 void error(string err) {
@@ -236,10 +235,10 @@ class Interpreter {
     else if (op=="or") return Value(l.isTrue || r.isTrue);
     else if (l.t != T_INT || r.t != T_INT) error("'%s' expected int".format(op));
     switch (op) {
-    case "<": return Value(l.l <  r.l); case "<=": return Value(l.l <= r.l);
-    case ">": return Value(l.l >  r.l); case ">=": return Value(l.l >= r.l);
-    case "+": return Value(l.l +  r.l); case "-":  return Value(l.l -  r.l);
-    case "*": return Value(l.l *  r.l); case "/":  return Value(l.l /  r.l);
+    case "<": return Value(l.l < r.l); case "<=": return Value(l.l <= r.l);
+    case ">": return Value(l.l > r.l); case ">=": return Value(l.l >= r.l);
+    case "+": return Value(l.l + r.l); case "-":  return Value(l.l -  r.l);
+    case "*": return Value(l.l * r.l); case "/":  return Value(l.l /  r.l);
     default: error("unknown '%s'".format(op)); assert(0);
     }
   }

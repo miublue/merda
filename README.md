@@ -1,17 +1,17 @@
 # Merda
 
-Tiny interpreter in <300 lines of code, made as a little exercise.
+Tiny interpreter in ~300 lines of code, made as a little exercise.
 Merda literally means `shit`, reflecting the quality of the code.
 
 ## Compiling
 
-Dependencies: a D compiler (only tested with dmd and ldc).
+Dependencies: make, a D compiler (only tested with dmd and ldc).
 
 Compile with:
 ```sh
-dmd merda.d
-# or with ldc
-ldc2 merda.d
+make
+# default compiler is dmd, to use ldc do:
+make DC=ldc2
 ```
 
 ## Features
@@ -19,6 +19,7 @@ ldc2 merda.d
 * Functions;
 * Comments with `#`;
 * Local and global variables;
+* Importing files and external functions;
 * Integers, strings and arrays (+ lua-style `nil`);
 * Basic control-flow (`if`, `elif`, `else`, `while`, `break`, `continue` and `return`);
 * Basic arithmetic operations (`+`, `-`, `*` and `/`);

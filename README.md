@@ -29,5 +29,5 @@ make DC=ldc2
 
 ## Example
 
-* See [this example file](/example.mr).
+* See [this example file](/example.mr) and [this other file](/count-lines.mr).
 

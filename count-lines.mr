@@ -1,0 +1,39 @@
+import("common.mr")
+
+func split(string, delim) {
+  list = []
+  tok = ""
+  i = 0
+  while i < len(string) {
+    if string[i] == delim {
+      list = append(list, tok)
+      tok = ""
+    } else {
+      tok = append(tok, string[i])
+    }
+    i = i + 1
+  }
+  return if tok { append(list, tok) } else { list }
+}
+
+if len(args) < 2 {
+  write("error: missing input files\n")
+  exit(1)
+}
+
+func count(lines) {
+  n = i = 0
+  while i < len(lines) {
+    # skip empty lines
+    if lines[i] { n = n + 1 }
+    i = i + 1
+  }
+  return n
+}
+
+total = i = 0
+while (i = i + 1) < len(args) {
+  total = total + lines = count(split(read_file(args[i]), "\n"))
+  write("counted ", lines, " lines in file ", args[i], "\n")
+}
+write("\e[1;31mcounted ", total, " lines in total\e[0m\n")

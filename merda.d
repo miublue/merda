@@ -9,8 +9,7 @@ struct Value {
   this(string s_) { t=T_STR,s=s_; }
   this(Value[] a_) { t=T_ARR,a=a_; }
   bool isTrue() => t==T_INT? l!=0 : t==T_STR? s.length!=0 : t==T_ARR? a.length!=0 : false;
-  bool opEquals(Value o) =>
-    t==o.t? (t==T_INT? l==o.l : t==T_STR? s==o.s : t==T_ARR? a==o.a : true) : false;
+  bool opEquals(Value o) => t==o.t? (t==T_INT? l==o.l : t==T_STR? s==o.s : t==T_ARR? a==o.a : true) : false;
 }
 string[] tokenize(string text) {
   string[] res; string tok; int is_blk;
@@ -21,9 +20,7 @@ string[] tokenize(string text) {
       if (!is_blk && tok.strip.length) res ~= tok, tok = "";
       continue;
     } else if (chr == '\"') {
-      if (is_blk == 1 && tok.endsWith("\\")) {
-        tok ~= chr; continue;
-      }
+      if (is_blk == 1 && tok.endsWith("\\")) { tok ~= chr; continue; }
       if (tok) res ~= tok;
       tok = is_blk? "" : ""~chr, is_blk = (is_blk)? 0 : 1;
     } else if (!is_blk && chr == '#') {
@@ -39,8 +36,7 @@ string[] tokenize(string text) {
 string escapeString(string s) {
   auto r="", cs = ['n': '\n', 'r': '\r', 't': '\t', 'e': '\033'];
   for (int i = 0; i < s.length; ++i)
-    if (s[i] == '\\') if (++i >= s.length) break;
-                      else r ~= (s[i] in cs)? cs[s[i]] : s[i];
+    if (s[i] == '\\') if (++i >= s.length) break; else r ~= (s[i] in cs)? cs[s[i]] : s[i];
     else r ~= s[i];
   return r;
 }
@@ -60,7 +56,7 @@ Value merda_import(Value[] args) {
     if (path.t != T_STR) error("import expects file paths\n");
     auto file = path.s.expandTilde;
     if (!file.exists || file.isDir) error("could not import file '%s'".format(path.s));
-    auto i = new Interpreter(new Compiler(file.readText.tokenize~"").compile);
+    auto i = new Interpreter(new Parser(file.readText.tokenize~"").parse);
     i.exec;
     foreach (func; i.funs.byKeyValue) intp.funs[func.key] = func.value;
     foreach (glob; i.funs["<GLOBAL>"].vars.byKeyValue) intp.funs["<GLOBAL>"].vars[glob.key] = glob.value;
@@ -78,8 +74,8 @@ void error(string err) {
 }
 Value function(Value[])[string] extn; void*[] libs; Interpreter intp;
 enum NodeType {
-	LOAD_CONST, GET_VAR, SET_VAR, MAKE_FUNC, CALL_FUNC, UNARY, BINARY,
-	WHILE, IFELSE, RETURN, BLOCK, MAKE_ARRAY, SET_ARRAY, GET_ARRAY,
+  LOAD_CONST, GET_VAR, SET_VAR, MAKE_FUNC, CALL_FUNC, UNARY, BINARY,
+  WHILE, IFELSE, RETURN, BLOCK, MAKE_ARRAY, ARRAY_INDEX,
 }
 struct NodeIfCond { Node* cond, expr; }
 struct NodeSetVar { string name; Node* expr; }
@@ -90,35 +86,35 @@ struct NodeUnary { string op; Node* expr; }
 struct NodeReturn { ulong ret_type; Node* expr; }
 struct NodeArrayIndex { Node* array, index, expr; }
 struct Node {
-	NodeType t;
-	union {
-		Value load_const;
-		string get_var;
-		NodeSetVar set_var;
-		NodeMakeFunc make_func;
-		NodeCallFunc call_func;
-		NodeBinary binary;
-		NodeUnary unary;
-		NodeIfCond[] ifelse;
-		NodeReturn ret;
-		Node*[] block;
-		Node*[] make_array;
-		NodeArrayIndex array_index;
-	};
+  NodeType t;
+  union {
+    Value load_const;
+    string get_var;
+    NodeSetVar set_var;
+    NodeMakeFunc make_func;
+    NodeCallFunc call_func;
+    NodeBinary binary;
+    NodeUnary unary;
+    NodeIfCond[] ifelse;
+    NodeReturn ret;
+    Node*[] block;
+    Node*[] make_array;
+    NodeArrayIndex array_index;
+  };
 }
-class Compiler {
-	string[] toks; ulong cur;
-	this(string[] t) {
+class Parser {
+  string[] toks; ulong cur;
+  this(string[] t) {
     toks = t~"", cur = 0;
-	}
+  }
   void consume(string tok) {
     if (toks[cur++] != tok) error("missing '%s'".format(tok));
   }
-	Node*[] compile() {
+  Node*[] parse() {
     Node*[] ast;
     while (cur < toks.length && toks[cur] != "") ast ~= genExpr;
     return ast;
-	}
+  }
   Node* genWord(string word) {
     if (toks[cur] == "=" && toks[cur+1] != "=") {
       ++cur;
@@ -128,9 +124,9 @@ class Compiler {
       do if (toks[++cur] == ")") break; else args ~= genExpr;
       while (toks[cur] == ",");
       consume(")");
-			return new Node(NodeType.CALL_FUNC, call_func: NodeCallFunc(word, args));
+      return new Node(NodeType.CALL_FUNC, call_func: NodeCallFunc(word, args));
     }
-		return new Node(NodeType.GET_VAR, get_var: word);
+    return new Node(NodeType.GET_VAR, get_var: word);
   }
   Node* genExpr(int p = 0) {
     auto precs = [["and","or"],["<",">","!","="],["+","-"],["*","/"]];
@@ -143,32 +139,32 @@ class Compiler {
     return l;
   }
   Node* genBlock() {
-		Node*[] block;
+    Node*[] block;
     consume("{");
     while (toks[cur] != "}") block ~= genExpr;
     consume("}");
-		return new Node(NodeType.BLOCK, block: block);
+    return new Node(NodeType.BLOCK, block: block);
   }
   Node* genMakeFunc(string name) {
     NodeMakeFunc func; ++cur;
     do if (toks[++cur] == ")") break; else func.args ~= toks[cur++];
     while (toks[cur] == ",");
     consume(")");
-    func.name = name, func.expr = genBlock;
-		return new Node(NodeType.MAKE_FUNC, make_func: func);
+    func.name = name, func.expr = genExpr;
+    return new Node(NodeType.MAKE_FUNC, make_func: func);
   }
   Node* genIfElse() {
-		NodeIfCond[] ifelse;
-		do ++cur, ifelse ~= NodeIfCond(genExpr, genBlock); while (toks[cur] == "elif");
+    NodeIfCond[] ifelse;
+    do ++cur, ifelse ~= NodeIfCond(genExpr, genExpr); while (toks[cur] == "elif");
     if (toks[cur] == "else") {
       ++cur;
-      ifelse ~= NodeIfCond(new Node(NodeType.LOAD_CONST, load_const: Value(true)), genBlock);
+      ifelse ~= NodeIfCond(new Node(NodeType.LOAD_CONST, load_const: Value(true)), genExpr);
     }
     return new Node(NodeType.IFELSE, ifelse: ifelse);
   }
   Node* genWhile() {
     ++cur;
-		return new Node(NodeType.WHILE, ifelse: [NodeIfCond(genExpr, genBlock)]);
+    return new Node(NodeType.WHILE, ifelse: [NodeIfCond(genExpr, genExpr)]);
   }
   Node* genReturn() {
     auto res = toks[++cur] == "}"? null : genExpr;
@@ -186,13 +182,13 @@ class Compiler {
   }
   Node* genArrayIndex(Node* arr) {
     consume("[");
-		auto idx = NodeArrayIndex(array: arr, index: genExpr, expr: null);
+    auto idx = NodeArrayIndex(array: arr, index: genExpr, expr: null);
     consume("]");
     if (toks[cur] == "=" && toks[cur+1] != "=") {
       ++cur;
       idx.expr = genExpr;
     }
-		return new Node(idx.expr is null? NodeType.SET_ARRAY : NodeType.GET_ARRAY, array_index: idx);
+    return new Node(NodeType.ARRAY_INDEX, array_index: idx);
   }
   Node* genTerm() {
     switch (toks[cur]) {
@@ -201,10 +197,10 @@ class Compiler {
       consume(")");
       return res;
     case "-": case "+": case "!":
-      auto op = toks[cur++];
-      return new Node(NodeType.UNARY, unary: NodeUnary(op, genPrimary));
+      return new Node(NodeType.UNARY, unary: NodeUnary(toks[cur++], genPrimary));
+    case "{": return genBlock();
     case "[": return genMakeArray();
-		case "nil": ++cur; return new Node(NodeType.LOAD_CONST, load_const: Value(T_NIL));
+    case "nil": ++cur; return new Node(NodeType.LOAD_CONST, load_const: Value(T_NIL));
     case "func": return genMakeFunc(toks[++cur]);
     case "if": return genIfElse();
     case "while": return genWhile();
@@ -226,12 +222,11 @@ class Compiler {
 struct Function { string[] args; Value[string] vars; Node *body; }
 class Interpreter {
   Node*[] ast;
-  ulong cur, loop_out;
+  ulong loop_out;
   Function[string] funs; Function* cfun;
   this(Node*[] code, string[] args = []) {
-    ast = code, cur = 0;
-    funs["<GLOBAL>"] = Function(
-        args: [],
+    ast = code;
+    funs["<GLOBAL>"] = Function(args: [],
         vars: ["args": Value(args.map!(a => Value(a)).array)],
         body: new Node(NodeType.BLOCK, block: ast));
     extn = ["extern": &merda_extern, "import": &merda_import, "exit": &merda_exit];
@@ -267,7 +262,6 @@ class Interpreter {
     error("function '%s' does not exist.".format(call_func.name)); assert(0);
   }
   Value execExpr(Node* node) {
-    auto res = Value(T_NIL);
     final switch(node.t) {
     case NodeType.LOAD_CONST: return node.load_const;
     case NodeType.GET_VAR: return getVar(node.get_var);
@@ -281,10 +275,8 @@ class Interpreter {
     case NodeType.RETURN: return execReturn(node.ret);
     case NodeType.BLOCK: return execBlock(node.block);
     case NodeType.MAKE_ARRAY: return execMakeArray(node.block);
-    case NodeType.SET_ARRAY: case NodeType.GET_ARRAY:
-      return execArrayIndex(node.array_index);
+    case NodeType.ARRAY_INDEX: return execArrayIndex(node.array_index);
     }
-    return res;
   }
   Value execMakeArray(Node*[] exprs) => Value(exprs.map!(e => execExpr(e)).array);
   Value execArrayIndex(NodeArrayIndex arr) {
@@ -294,7 +286,7 @@ class Interpreter {
     if (index.t!=T_INT || (index.l<0 || index.l>=len)) error("index out of range.");
     if (arr.expr !is null) {
       if (array.t != T_ARR) error("cannot assign to string index.");
-      array.a[index.l] = execExpr(arr.expr);
+      return array.a[index.l] = execExpr(arr.expr);
     }
     return array.t==T_STR? Value(""~array.s[index.l]) : array.a[index.l];
   }
@@ -354,7 +346,7 @@ void main(string[] args) {
     stderr.writefln("usage: %s <input>", args[0]);
     return;
   }
-  intp = new Interpreter(new Compiler(args[1].readText.tokenize).compile, args[1..$]);
+  intp = new Interpreter(new Parser(args[1].readText.tokenize).parse, args[1..$]);
   intp.exec;
   merda_exit([Value(0)]);
 }

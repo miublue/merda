@@ -1,4 +1,4 @@
-extern("./lib.so", "write")
+extern("merda_lib.so", "write")
 
 x = i = 0
 while (i = i + 1) < 250001

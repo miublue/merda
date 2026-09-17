@@ -1,4 +1,4 @@
 # load the 'write' function from the local DLL
-extern("./lib.so", "write")
+extern("merda_lib.so", "write")
 
 write("Hello, World!\n")

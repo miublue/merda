@@ -1,7 +1,10 @@
 # Merda
 
-Tiny interpreter in ~300 lines of code, made as a little exercise.
+Tiny interpreter in ~400 lines of code, made as a little exercise.
 Merda literally means `shit`, reflecting the quality of the code.
+
+This branch has a separate parser, and a tree-walking interpreter,
+thus adding an extra ~100 lines of code.
 
 ## Compiling
 
@@ -29,5 +32,12 @@ make DC=ldc2
 
 ## Example
 
-* See [this example file](/example.mr) and [this other file](/count-lines.mr).
+```
+# load the 'write' function from the local DLL
+extern("./lib.so", "write")
+
+write("Hello, World!\n")
+```
+
+* See [these examples here](/examples/).
 

@@ -1,0 +1,4 @@
+# load the 'write' function from the local DLL
+extern("./lib.so", "write")
+
+write("Hello, World!\n")

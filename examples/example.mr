@@ -1,4 +1,4 @@
-import("common.mr")
+import("examples/common.mr")
 
 func some_fn(val) {
   write("abs(a) = ", if val < 0 { -val } else { val }, "\n")

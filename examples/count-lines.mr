@@ -1,4 +1,4 @@
-import("common.mr")
+import("examples/common.mr")
 
 func split(string, delim) {
   list = []

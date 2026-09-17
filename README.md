@@ -32,5 +32,12 @@ make DC=ldc2
 
 ## Example
 
-* See [this example file](/example.mr) and [this other file](/count-lines.mr).
+```
+# load the 'write' function from the local DLL
+extern("./lib.so", "write")
+
+write("Hello, World!\n")
+```
+
+* See [these examples here](/examples).
 

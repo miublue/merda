@@ -40,10 +40,16 @@ string escapeString(string s) {
     else r ~= s[i];
   return r;
 }
+string findFile(string s) {
+  if (s.absolutePath.exists) return s.absolutePath;
+  auto p = thisExePath.split('/')[0..$-1].join('/') ~ '/' ~ s;
+  return p.absolutePath;
+}
 Value merda_extern(Value[] args) {
   if (args.length < 2 || args[0].t != T_STR) error("extern expects library path and func names");
-  libs ~= dlopen(args[0].s.expandTilde.toStringz, RTLD_LAZY);
-  if (libs[$-1] is null) error("could not load library '%s'".format(args[0].s));
+  auto path = args[0].s.expandTilde.findFile;
+  libs ~= dlopen(path.toStringz, RTLD_LAZY);
+  if (libs[$-1] is null) error("could not load library '%s'".format(path));
   foreach (fn; args[1..$]) {
     extn[fn.s] = cast(Value function(Value[]))dlsym(libs[$-1], ("merda_"~fn.s).toStringz);
     auto err = dlerror();
@@ -53,8 +59,8 @@ Value merda_extern(Value[] args) {
 }
 Value merda_import(Value[] args) {
   foreach (path; args) {
-    if (path.t != T_STR) error("import expects file paths\n");
-    auto file = path.s.expandTilde;
+    if (path.t != T_STR) error("import expects file paths");
+    auto file = path.s.expandTilde.findFile;
     if (!file.exists || file.isDir) error("could not import file '%s'".format(path.s));
     auto i = new Interpreter(new Parser(file.readText.tokenize~"").parse);
     i.exec;
@@ -141,7 +147,7 @@ class Parser {
   Node* genBlock() {
     Node*[] block;
     consume("{");
-    while (toks[cur] != "}") block ~= genExpr;
+    while (cur < toks.length && !["}", ""].canFind(toks[cur])) block ~= genExpr;
     consume("}");
     return new Node(NodeType.BLOCK, block: block);
   }
@@ -234,10 +240,7 @@ class Interpreter {
   Value exec() => execFunc(funs["<GLOBAL>"]);
   Value execFunc(Function fn, Value[] args = []) {
     auto pfun = cfun; cfun = &fn;
-    foreach (i, arg; args) {
-      if (i >= cfun.args.length) break;
-      cfun.vars[cfun.args[i]] = arg;
-    }
+    foreach (i, arg; args) if (i >= cfun.args.length) break; else cfun.vars[cfun.args[i]] = arg;
     auto res = execExpr(cfun.body);
     loop_out = NONE, cfun = pfun;
     return res;
@@ -245,11 +248,9 @@ class Interpreter {
   Value getVar(string name) {
     if (name in cfun.vars) return cfun.vars[name];
     if (name in funs["<GLOBAL>"].vars) return funs["<GLOBAL>"].vars[name];
-    error("variable '%s' does not exist.".format(name)); assert(0);
+    error("variable '%s' does not exist".format(name)); assert(0);
   }
-  Value setVar(NodeSetVar set_var) {
-    return cfun.vars[set_var.name] = execExpr(set_var.expr);
-  }
+  Value setVar(NodeSetVar set_var) => cfun.vars[set_var.name] = execExpr(set_var.expr);
   Value makeFunc(NodeMakeFunc make_func) {
     funs[make_func.name] = Function(make_func.args, new Value[string], make_func.expr);
     foreach (arg; funs[make_func.name].args) funs[make_func.name].vars[arg] = Value(T_NIL);
@@ -259,33 +260,33 @@ class Interpreter {
     auto args = call_func.args.map!(a => execExpr(a)).array;
     if (call_func.name in funs) return execFunc(funs[call_func.name], args);
     if (call_func.name in extn) return extn[call_func.name](args);
-    error("function '%s' does not exist.".format(call_func.name)); assert(0);
+    error("function '%s' does not exist".format(call_func.name)); assert(0);
   }
   Value execExpr(Node* node) {
     final switch(node.t) {
-    case NodeType.LOAD_CONST: return node.load_const;
-    case NodeType.GET_VAR: return getVar(node.get_var);
-    case NodeType.SET_VAR: return setVar(node.set_var);
-    case NodeType.MAKE_FUNC: return makeFunc(node.make_func);
-    case NodeType.CALL_FUNC: return callFunc(node.call_func);
-    case NodeType.UNARY: return execUnary(node.unary);
-    case NodeType.BINARY: return execBinary(node.binary);
-    case NodeType.WHILE: return execWhile(node.ifelse[0]);
-    case NodeType.IFELSE: return execIfElse(node.ifelse);
-    case NodeType.RETURN: return execReturn(node.ret);
-    case NodeType.BLOCK: return execBlock(node.block);
-    case NodeType.MAKE_ARRAY: return execMakeArray(node.block);
+    case NodeType.LOAD_CONST:  return node.load_const;
+    case NodeType.GET_VAR:     return getVar(node.get_var);
+    case NodeType.SET_VAR:     return setVar(node.set_var);
+    case NodeType.MAKE_FUNC:   return makeFunc(node.make_func);
+    case NodeType.CALL_FUNC:   return callFunc(node.call_func);
+    case NodeType.UNARY:       return execUnary(node.unary);
+    case NodeType.BINARY:      return execBinary(node.binary);
+    case NodeType.WHILE:       return execWhile(node.ifelse[0]);
+    case NodeType.IFELSE:      return execIfElse(node.ifelse);
+    case NodeType.RETURN:      return execReturn(node.ret);
+    case NodeType.BLOCK:       return execBlock(node.block);
+    case NodeType.MAKE_ARRAY:  return execMakeArray(node.block);
     case NodeType.ARRAY_INDEX: return execArrayIndex(node.array_index);
     }
   }
   Value execMakeArray(Node*[] exprs) => Value(exprs.map!(e => execExpr(e)).array);
   Value execArrayIndex(NodeArrayIndex arr) {
     auto array = execExpr(arr.array), index = execExpr(arr.index);
-    if (![T_STR, T_ARR].canFind(array.t)) error("can only index arrays.");
+    if (![T_STR, T_ARR].canFind(array.t)) error("can only index arrays");
     auto len = array.t==T_STR? array.s.length : array.a.length;
-    if (index.t!=T_INT || (index.l<0 || index.l>=len)) error("index out of range.");
+    if (index.t!=T_INT || (index.l<0 || index.l>=len)) error("index out of range");
     if (arr.expr !is null) {
-      if (array.t != T_ARR) error("cannot assign to string index.");
+      if (array.t != T_ARR) error("cannot assign to string index");
       return array.a[index.l] = execExpr(arr.expr);
     }
     return array.t==T_STR? Value(""~array.s[index.l]) : array.a[index.l];
@@ -322,7 +323,7 @@ class Interpreter {
     case "!": return Value(!execExpr(una.expr).isTrue);
     case "-": case "+":
       return execBinary(NodeBinary(una.op, new Node(NodeType.LOAD_CONST, load_const: Value(0)), una.expr));
-    default: error("unknown operator '%s'.".format(una.op)); assert(0);
+    default: error("unknown operator '%s'".format(una.op)); assert(0);
     }
   }
   Value execBinary(NodeBinary bin) {
@@ -337,7 +338,7 @@ class Interpreter {
     case ">": return Value(l.l > r.l); case ">=": return Value(l.l >= r.l);
     case "+": return Value(l.l + r.l); case "-":  return Value(l.l -  r.l);
     case "*": return Value(l.l * r.l); case "/":  return Value(l.l /  r.l);
-    default: error("unknown operator '%s'.".format(bin.op)); assert(0);
+    default: error("unknown operator '%s'".format(bin.op)); assert(0);
     }
   }
 }

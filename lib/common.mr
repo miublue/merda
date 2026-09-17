@@ -1,0 +1,3 @@
+extern("merda_lib.so", "read", "write", "read_file", "write_file")
+extern("merda_lib.so", "append", "pop", "len", "to_int", "to_str")
+

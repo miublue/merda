@@ -53,4 +53,18 @@ Value merda_len(Value[] args) {
     merda.error("len expected array");
   return Value(args[0].t==T_ARR? args[0].a.length : args[0].s.length);
 }
-
+Value merda_split(Value[] args) {
+  if (args.length != 2 && args[0].t != T_STR && args[1].t != T_STR)
+    merda.error("split expected (string, string)");
+  return Value(args[0].s.split(args[1].s).map!(v => Value(v)).array);
+}
+Value merda_join(Value[] args) {
+  if (args.length != 2 && args[0].t != T_ARR && args[1].t != T_STR)
+    merda.error("join expected (array, string)");
+  return Value(args[0].a.map!(v => merda_to_str([v]).s).array.join(args[1].s));
+}
+Value merda_system(Value[] args) {
+  if (args.length != 1 || args[0].t != T_STR)
+    merda.error("system expected string");
+  return Value(args[0].s.spawnShell.wait);
+}

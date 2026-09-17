@@ -1,21 +1,5 @@
 import("common.mr")
 
-func split(string, delim) {
-  list = []
-  tok = ""
-  i = 0
-  while i < len(string) {
-    if string[i] == delim {
-      list = append(list, tok)
-      tok = ""
-    } else {
-      tok = append(tok, string[i])
-    }
-    i = i + 1
-  }
-  return if tok { append(list, tok) } else { list }
-}
-
 if len(args) < 2 {
   write("error: missing input files\n")
   exit(1)

@@ -1,0 +1,17 @@
+#!/bin/env merda
+extern("./raylib-merda.so", "InitWindow", "CloseWindow", "SetTargetFPS",
+        "BeginDrawing", "EndDrawing", "ClearBackground", "WindowShouldClose")
+
+InitWindow(1300, 720, "Raylib Merda!")
+SetTargetFPS(60)
+
+#     0xRRGGBBAA
+RED = 0xff0000ff
+
+while !WindowShouldClose() {
+  BeginDrawing()
+  ClearBackground(RED)
+  EndDrawing()
+}
+CloseWindow()
+

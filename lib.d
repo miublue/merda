@@ -30,27 +30,29 @@ Value merda_read_file(Value[] args) {
 Value merda_write_file(Value[] args) {
   if (args.length != 2 || args[0].t != T_STR || args[1].t != T_STR)
     merda.error("write_file expected (string, string)");
-  try std.file.write(args[0].s, args[1].s);
-  catch (Exception _) return Value(false);
+  try std.file.write(args[0].s, args[1].s); catch (Exception _) return Value(false);
   return Value(true);
 }
 Value merda_append(Value[] args) {
-  if (args.length < 2 || ![T_STR,T_ARR].canFind(args[0].t)) 
-    merda.error("append expected array");
-  if (args[0].t == T_ARR) args[0].a ~= args[1]; 
-  else args[0].s ~= merda_to_str(args[1..$]).s;
+  if (args.length < 2 || ![T_STR,T_ARR].canFind(args[0].t)) merda.error("append expected array");
+  if (args[0].t == T_ARR) args[0].a ~= args[1]; else args[0].s ~= merda_to_str(args[1..$]).s;
+  return args[0];
+}
+Value merda_remove(Value[] args) {
+  if (args.length != 2 || ![T_STR,T_ARR].canFind(args[0].t) || args[1].t != T_INT)
+    merda.error("remove expected (array, int)");
+  auto idx = args[1].l, len = args[0].t == T_ARR? args[0].a.length : args[0].s.length;
+  if (idx<0 || idx>=len) merda.error("index out of range"); else if (idx==len-1) return merda_pop(args);
+  if (args[0].t == T_ARR) args[0].a.remove(idx); else args[0].s = args[0].s[0..idx] ~ args[0].s[idx+1..$];
   return args[0];
 }
 Value merda_pop(Value[] args) {
-  if (args.length != 1 || ![T_STR,T_ARR].canFind(args[0].t))
-    merda.error("pop expected array");
-  auto res = args[0].t==T_ARR? args[0].a[$-1] : Value(args[0].s[$-1]~"");
+  if (args.length != 1 || ![T_STR,T_ARR].canFind(args[0].t)) merda.error("pop expected array");
   if (args[0].t == T_ARR) args[0].a.popBack; else args[0].s.popBack;
-  return res;
+  return args[0];
 }
 Value merda_len(Value[] args) {
-  if (args.length != 1 || ![T_STR,T_ARR].canFind(args[0].t))
-    merda.error("len expected array");
+  if (args.length != 1 || ![T_STR,T_ARR].canFind(args[0].t)) merda.error("len expected array");
   return Value(args[0].t==T_ARR? args[0].a.length : args[0].s.length);
 }
 Value merda_split(Value[] args) {

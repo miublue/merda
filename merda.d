@@ -203,7 +203,7 @@ class Parser {
     case "break": case "continue": return genBreak(toks[cur++]=="break");
     default:
       if (toks[cur].isNumeric) return new Node(NodeType.LOAD_CONST, load_const: Value(toks[cur++].to!long));
-      else if (toks[cur].startsWith("0x"))
+      else if (toks[cur].toLower.startsWith("0x"))
         return new Node(NodeType.LOAD_CONST, load_const: Value(toks[cur++][2..$].to!long(16)));
       else if (toks[cur].startsWith("\""))
         return new Node(NodeType.LOAD_CONST, load_const: Value(toks[cur++][1..$].escapeString()));

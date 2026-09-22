@@ -1,15 +1,16 @@
 import std, core.sys.posix.dlfcn, core.stdc.stdlib : exit;
 enum : ulong { NONE, RETURN, BREAK, CONTINUE }
-enum : ubyte { T_NIL, T_INT, T_STR, T_ARR }
+enum : ubyte { T_NIL, T_INT, T_STR, T_ARR, T_MAP }
 struct Value {
-  ubyte t; union { long l; string s; Value[] a; }
+  ubyte t; union { long l; string s; Value[] a; Value[string] m; }
   this(ubyte t_) { t=t_; }
   this(long l_) { t=T_INT,l=l_; }
   this(bool b_) { this(b_.to!long); }
   this(string s_) { t=T_STR,s=s_; }
   this(Value[] a_) { t=T_ARR,a=a_; }
-  bool isTrue() => t==T_INT? l!=0 : t==T_STR? s.length!=0 : t==T_ARR? a.length!=0 : false;
-  bool opEquals(Value o) => t==o.t? (t==T_INT? l==o.l : t==T_STR? s==o.s : t==T_ARR? a==o.a : true) : false;
+  this(Value[string] m_) { t=T_MAP,m=m_; }
+  bool isTrue() => t==T_INT? l!=0 : t==T_STR? s.length!=0 : t==T_ARR? a.length!=0 : t==T_MAP? m.length!=0 : false;
+  bool opEquals(Value o) => t==o.t? (t==T_INT? l==o.l : t==T_STR? s==o.s : t==T_ARR? a==o.a : t==T_MAP? m==o.m : true) : false;
 }
 string[] tokenize(string text) {
   string[] res; string tok; int is_blk;
@@ -68,6 +69,13 @@ Value merda_import(Value[] args) {
     foreach (glob; i.funs["<GLOBAL>"].vars.byKeyValue) intp.funs["<GLOBAL>"].vars[glob.key] = glob.value;
   }
   return Value(T_NIL);
+}
+Value merda_map(Value[] args) {
+  if (args.length % 2 != 0) error("map expects (key, value, ...)");
+  auto map = new Value[string];
+  for (auto i = 0; i < args.length; i += 2)
+    if (args[i].t==T_STR) map[args[i].s]=args[i+1]; else error("map key should be string");
+  return Value(map);
 }
 Value merda_exit(Value[] args) {
   if (!args.length) merda_exit([Value(1)]);
@@ -223,7 +231,7 @@ class Interpreter {
     funs["<GLOBAL>"] = Function(args: [],
         vars: ["args": Value(args.map!(a => Value(a)).array)],
         body: new Node(NodeType.BLOCK, block: code));
-    extn = ["extern": &merda_extern, "import": &merda_import, "exit": &merda_exit];
+    extn = ["extern": &merda_extern, "import": &merda_import, "map": &merda_map, "exit": &merda_exit];
   }
   Value exec() => execFunc(funs["<GLOBAL>"]);
   Value execFunc(Function fn, Value[] args = []) {
@@ -269,6 +277,7 @@ class Interpreter {
   Value execMakeArray(Node*[] exprs) => Value(exprs.map!(e => execExpr(e)).array);
   Value execArrayIndex(NodeArrayIndex arr) {
     auto array = execExpr(arr.array), index = execExpr(arr.index);
+    if (array.t == T_MAP) return execMapIndex(array, index, arr.expr);
     if (![T_STR, T_ARR].canFind(array.t)) error("can only index arrays");
     auto len = array.t==T_STR? array.s.length : array.a.length;
     if (index.t!=T_INT || (index.l<0 || index.l>=len)) error("index out of range");
@@ -277,6 +286,11 @@ class Interpreter {
       return array.a[index.l] = execExpr(arr.expr);
     }
     return array.t==T_STR? Value(""~array.s[index.l]) : array.a[index.l];
+  }
+  Value execMapIndex(Value map, Value idx, Node *expr) {
+    if (idx.t != T_STR) error("map key may only be string");
+    if (expr) return map.m[idx.s] = execExpr(expr);
+    return map.m[idx.s];
   }
   Value execReturn(NodeReturn ret) {
     loop_out = ret.ret_type;

@@ -5,7 +5,9 @@ Value merda_to_str(Value[] args, bool is_arr = 0) {
   foreach (i, arg; args) {
     if (is_arr && i > 0) s ~= ", "; // HOW DO YOU LIKE THAT HUAUHUAHUHUUHAUHA
     s ~= arg.t==T_INT? arg.l.to!string : arg.t==T_STR? (is_arr?'\"'~arg.s~'\"':arg.s)
-                     : arg.t==T_ARR? merda_to_str(arg.a, true).s : "nil";
+                     : arg.t==T_ARR? merda_to_str(arg.a, true).s
+                     : arg.t==T_MAP? "[%s]".format(arg.m.byKeyValue.map!(k => "\"%s\": %s"
+                           .format(k.key, merda_to_str([k.value], true).s[1..$-1])).join(", ")) : "nil";
   }
   return Value(is_arr? s ~ "]" : s);
 }
@@ -64,6 +66,10 @@ Value merda_join(Value[] args) {
   if (args.length != 2 && args[0].t != T_ARR && args[1].t != T_STR)
     merda.error("join expected (array, string)");
   return Value(args[0].a.map!(v => merda_to_str([v]).s).array.join(args[1].s));
+}
+Value merda_keys(Value[] args) {
+  if (args.length != 1 && args[0].t != T_MAP) merda.error("keys expected map");
+  return Value(args[0].m.byKey.map!(k => Value(k)).array);
 }
 Value merda_system(Value[] args) {
   if (args.length != 1 || args[0].t != T_STR)

@@ -3,8 +3,8 @@
 Tiny interpreter in ~400 lines of code, made as a little exercise.
 Merda literally means `shit`, reflecting the quality of the code.
 
-This branch has a separate parser, and a tree-walking interpreter,
-thus adding an extra ~100 lines of code.
+This branch has a separate parser, a tree-walking interpreter, and an additional `map` type.
+thus adding an extra ~100 lines of code. (See branch `main` for the original).
 
 ## Compiling
 
@@ -23,11 +23,11 @@ make DC=ldc2
 * Comments with `#`;
 * Local and global variables;
 * Importing files and external functions;
-* Integers, strings and arrays (+ lua-style `nil`);
+* Integers, strings, arrays and maps (+ lua-style `nil`);
 * Basic control-flow (`if`, `elif`, `else`, `while`, `break`, `continue` and `return`);
 * Basic arithmetic operations (`+`, `-`, `*` and `/`);
 * Simple comparision operations (`==`, `!=`, `<`, `>`, `<=`, `>=`, `and` and `or`);
-* Tiny optional core library (~55 lines of code);
+* Tiny optional core library (~70 lines of code);
 * Very simple error reporting;
 
 ## Example

@@ -65,8 +65,8 @@ Value merda_import(Value[] args) {
     if (!file.exists || file.isDir) error("could not import file '%s'".format(path.s));
     auto i = new Interpreter(new Parser(file.readText.tokenize~"").parse);
     i.exec;
-    foreach (func; i.funs.byKeyValue) intp.funs[func.key] = func.value;
-    foreach (glob; i.funs["<GLOBAL>"].vars.byKeyValue) intp.funs["<GLOBAL>"].vars[glob.key] = glob.value;
+    foreach (func; i.funs.byKeyValue) gintp.funs[func.key] = func.value;
+    foreach (glob; i.funs["<GLOBAL>"].vars.byKeyValue) gintp.funs["<GLOBAL>"].vars[glob.key] = glob.value;
   }
   return Value(T_NIL);
 }
@@ -86,7 +86,7 @@ void error(string err) {
   stderr.writefln("error: %s", err);
   merda_exit([Value(1)]);
 }
-Value function(Value[])[string] extn; void*[] libs; Interpreter intp;
+Value function(Value[])[string] extn; void*[] libs; Interpreter gintp; Value gargs;
 enum NodeType {
   LOAD_CONST, MAKE_FUNC, CALL_FUNC, UNARY, BINARY, WHILE,
   IFELSE, RETURN, BLOCK, VARIABLE, MAKE_ARRAY, ARRAY_INDEX,
@@ -227,13 +227,11 @@ class Parser {
 struct Function { string[] args; Value[string] vars; Node *body; }
 class Interpreter {
   ulong loop_out; Function[string] funs; Function* cfun;
-  this(Node*[] code, string[] args = []) {
-    funs["<GLOBAL>"] = Function(args: [],
-        vars: ["args": Value(args.map!(a => Value(a)).array)],
-        body: new Node(NodeType.BLOCK, block: code));
+  this(Node*[] code) {
+    cfun = &(funs["<GLOBAL>"] = Function(vars: ["args": gargs], body: new Node(NodeType.BLOCK, block: code)));
     extn = ["extern": &merda_extern, "import": &merda_import, "map": &merda_map, "exit": &merda_exit];
   }
-  Value exec() => execFunc(funs["<GLOBAL>"]);
+  Value exec() => execExpr(funs["<GLOBAL>"].body);
   Value execFunc(Function fn, Value[] args = []) {
     auto pfun = cfun; cfun = &fn;
     foreach (i, arg; cfun.args) cfun.vars[arg] = i<args.length? args[i] : Value(T_NIL);
@@ -269,9 +267,13 @@ class Interpreter {
     error("function '%s' does not exist".format(call_func.name)); assert(0);
   }
   Value execVariable(NodeVariable var) {
-    if (var.expr !is null) return cfun.vars[var.name] = execExpr(var.expr);
+    auto v=var.name, p="global_", c=v.length>p.length&&v.startsWith(p), n=c?v[p.length..$]:v;
+    if (var.expr !is null) {
+      auto val = execExpr(var.expr);
+      return c? (funs["<GLOBAL>"].vars[n] = val) : (cfun.vars[var.name] = val);
+    }
     if (var.name in cfun.vars) return cfun.vars[var.name];
-    if (var.name in funs["<GLOBAL>"].vars) return funs["<GLOBAL>"].vars[var.name];
+    if (c && n in funs["<GLOBAL>"].vars) return funs["<GLOBAL>"].vars[n];
     error("variable '%s' does not exist".format(var.name)); assert(0);
   }
   Value execMakeArray(Node*[] exprs) => Value(exprs.map!(e => execExpr(e)).array);
@@ -349,7 +351,7 @@ void main(string[] args) {
     return;
   }
   if (!args[1].exists || args[1].isDir) error("could not read file '%s'".format(args[1]));
-  intp = new Interpreter(new Parser(args[1].readText.tokenize).parse, args[1..$]);
-  intp.exec;
+  gargs = Value(args[1..$].map!(a => Value(a)).array);
+  (gintp = new Interpreter(new Parser(args[1].readText.tokenize).parse)).exec;
   merda_exit([Value(0)]);
 }

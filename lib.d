@@ -22,7 +22,8 @@ Value merda_write(Value[] args) {
 }
 Value merda_read(Value[] args) {
   merda_write(args);
-  return Value(readln.strip);
+  auto val = readln();
+  return val is null? Value(T_NIL) : Value(val.strip);
 }
 Value merda_read_file(Value[] args) {
   if (args.length != 1 || args[0].t != T_STR) merda.error("read_file expected string");

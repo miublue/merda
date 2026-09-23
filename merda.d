@@ -348,6 +348,7 @@ void main(string[] args) {
     stderr.writefln("usage: %s <input>", args[0]);
     return;
   }
+  if (!args[1].exists || args[1].isDir) error("could not read file '%s'".format(args[1]));
   intp = new Interpreter(new Parser(args[1].readText.tokenize).parse, args[1..$]);
   intp.exec;
   merda_exit([Value(0)]);

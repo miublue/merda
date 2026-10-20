@@ -96,7 +96,6 @@ struct NodeVariable { string name; Node* expr; }
 struct NodeMakeFunc { string name; string[] args; Node* expr; }
 struct NodeCallFunc { string name; Node*[] args; }
 struct NodeBinary { string op; Node* left, right; }
-struct NodeUnary { string op; Node* expr; }
 struct NodeReturn { ulong ret_type; Node* expr; }
 struct NodeArrayIndex { Node* array, index, expr; }
 struct Node {
@@ -107,7 +106,6 @@ struct Node {
     NodeMakeFunc make_func;
     NodeCallFunc call_func;
     NodeBinary binary;
-    NodeUnary unary;
     NodeIfCond[] ifelse;
     NodeReturn ret;
     Node*[] block;
@@ -128,7 +126,7 @@ class Parser {
     return ast;
   }
   Node* genWord(string word) {
-    Node *expr = null;
+    Node* expr = null;
     if (toks[cur] == "(") {
       Node*[] args;
       do if (toks[++cur] == ")") break; else args ~= genExpr;
@@ -200,7 +198,7 @@ class Parser {
       consume(")");
       return res;
     case "-": case "+": case "!":
-      return new Node(NodeType.UNARY, unary: NodeUnary(toks[cur++], genPrimary));
+      return new Node(NodeType.UNARY, binary: NodeBinary(toks[cur++], genPrimary, null));
     case "{": return genBlock();
     case "[": return genMakeArray();
     case "nil": ++cur; return new Node(NodeType.LOAD_CONST, load_const: Value(T_NIL));
@@ -224,12 +222,16 @@ class Parser {
     return res;
   }
 }
-struct Function { string[] args; Value[string] vars; Node *body; }
+struct Function { string[] args; Value[string] vars; Node* body; }
 class Interpreter {
-  ulong loop_out; Function[string] funs; Function* cfun;
+  ulong loop_out; Function[string] funs; Function* cfun; const Value delegate(Node*)[] _exprs;
   this(Node*[] code) {
     cfun = &(funs["<GLOBAL>"] = Function(vars: ["args": gargs], body: new Node(NodeType.BLOCK, block: code)));
     extn = ["extern": &merda_extern, "import": &merda_import, "map": &merda_map, "exit": &merda_exit];
+    _exprs = [
+      &this.execMakeFunc, &this.execCallFunc, &this.execUnary, &this.execBinary, &this.execWhile, &this.execIfElse,
+      &this.execReturn, &this.execBlock, &this.execVariable, &this.execMakeArray, &this.execArrayIndex,
+    ];
   }
   Value exec() => execExpr(funs["<GLOBAL>"].body);
   Value execFunc(Function fn, Value[] args = []) {
@@ -240,108 +242,88 @@ class Interpreter {
     return res;
   }
   Value execExpr(Node* node) {
-    final switch(node.t) {
-    case NodeType.LOAD_CONST:  return node.load_const;
-    case NodeType.MAKE_FUNC:   return execMakeFunc(node.make_func);
-    case NodeType.CALL_FUNC:   return execCallFunc(node.call_func);
-    case NodeType.UNARY:       return execUnary(node.unary);
-    case NodeType.BINARY:      return execBinary(node.binary);
-    case NodeType.WHILE:       return execWhile(node.ifelse[0]);
-    case NodeType.IFELSE:      return execIfElse(node.ifelse);
-    case NodeType.RETURN:      return execReturn(node.ret);
-    case NodeType.BLOCK:       return execBlock(node.block);
-    case NodeType.VARIABLE:    return execVariable(node.variable);
-    case NodeType.MAKE_ARRAY:  return execMakeArray(node.block);
-    case NodeType.ARRAY_INDEX: return execArrayIndex(node.array_index);
-    }
+    return node.t == NodeType.LOAD_CONST? node.load_const : _exprs[cast(ulong)node.t-1](node);
   }
-  Value execMakeFunc(NodeMakeFunc make_func) {
-    funs[make_func.name] = Function(make_func.args, new Value[string], make_func.expr);
-    foreach (arg; funs[make_func.name].args) funs[make_func.name].vars[arg] = Value(T_NIL);
+  Value execMakeFunc(Node* node) {
+    funs[node.make_func.name] = Function(node.make_func.args, new Value[string], node.make_func.expr);
+    foreach (arg; funs[node.make_func.name].args) funs[node.make_func.name].vars[arg] = Value(T_NIL);
     return Value(T_NIL);
   }
-  Value execCallFunc(NodeCallFunc call_func) {
-    auto args = call_func.args.map!(a => execExpr(a)).array;
-    if (call_func.name in funs) return execFunc(funs[call_func.name], args);
-    if (call_func.name in extn) return extn[call_func.name](args);
-    error("function '%s' does not exist".format(call_func.name)); assert(0);
+  Value execCallFunc(Node* node) {
+    auto args = node.call_func.args.map!(a => execExpr(a)).array;
+    if (node.call_func.name in funs) return execFunc(funs[node.call_func.name], args);
+    if (node.call_func.name in extn) return extn[node.call_func.name](args);
+    error("function '%s' does not exist".format(node.call_func.name)); assert(0);
   }
-  Value execVariable(NodeVariable var) {
-    auto v=var.name, p="global_", c=v.length>p.length&&v.startsWith(p), n=c?v[p.length..$]:v;
-    if (var.expr !is null) {
-      auto val = execExpr(var.expr);
-      return c? (funs["<GLOBAL>"].vars[n] = val) : (cfun.vars[var.name] = val);
+  Value execVariable(Node* node) {
+    auto v=node.variable.name, p="global_", c=v.length>p.length&&v.startsWith(p), n=c?v[p.length..$]:v;
+    if (node.variable.expr !is null) {
+      auto val = execExpr(node.variable.expr);
+      return c? (funs["<GLOBAL>"].vars[n] = val) : (cfun.vars[node.variable.name] = val);
     }
-    if (var.name in cfun.vars) return cfun.vars[var.name];
+    if (node.variable.name in cfun.vars) return cfun.vars[node.variable.name];
     if (c && n in funs["<GLOBAL>"].vars) return funs["<GLOBAL>"].vars[n];
-    error("variable '%s' does not exist".format(var.name)); assert(0);
+    error("variable '%s' does not exist".format(node.variable.name)); assert(0);
   }
-  Value execMakeArray(Node*[] exprs) => Value(exprs.map!(e => execExpr(e)).array);
-  Value execArrayIndex(NodeArrayIndex arr) {
-    auto array = execExpr(arr.array), index = execExpr(arr.index);
-    if (array.t == T_MAP) return execMapIndex(array, index, arr.expr);
+  Value execMakeArray(Node* node) => Value(node.block.map!(e => execExpr(e)).array);
+  Value execArrayIndex(Node* node) {
+    auto array = execExpr(node.array_index.array), index = execExpr(node.array_index.index);
+    if (array.t == T_MAP) {
+      if (index.t != T_STR) error("map key may only be string");
+      if (node.array_index.expr !is null) return array.m[index.s] = execExpr(node.array_index.expr);
+      return array.m[index.s];
+    }
     if (![T_STR, T_ARR].canFind(array.t)) error("can only index arrays");
     auto len = array.t==T_STR? array.s.length : array.a.length;
     if (index.t!=T_INT || (index.l<0 || index.l>=len)) error("index out of range");
-    if (arr.expr !is null) {
+    if (node.array_index.expr !is null) {
       if (array.t != T_ARR) error("cannot assign to string index");
-      return array.a[index.l] = execExpr(arr.expr);
+      return array.a[index.l] = execExpr(node.array_index.expr);
     }
     return array.t==T_STR? Value(""~array.s[index.l]) : array.a[index.l];
   }
-  Value execMapIndex(Value map, Value idx, Node *expr) {
-    if (idx.t != T_STR) error("map key may only be string");
-    if (expr) return map.m[idx.s] = execExpr(expr);
-    return map.m[idx.s];
+  Value execReturn(Node* node) {
+    loop_out = node.ret.ret_type;
+    return (node.ret.expr is null)? Value(T_NIL) : execExpr(node.ret.expr);
   }
-  Value execReturn(NodeReturn ret) {
-    loop_out = ret.ret_type;
-    return (ret.expr is null)? Value(T_NIL) : execExpr(ret.expr);
-  }
-  Value execWhile(NodeIfCond loop) {
+  Value execWhile(Node* node) {
     auto res = Value(T_NIL);
-    while (execExpr(loop.cond).isTrue) {
-      res = execExpr(loop.expr);
+    while (execExpr(node.ifelse[0].cond).isTrue) {
+      res = execExpr(node.ifelse[0].expr);
       if (loop_out == RETURN) return res;
       else if (loop_out == BREAK) { loop_out = NONE; return res; }
       else if (loop_out == CONTINUE) { loop_out = NONE; continue; }
     }
     return res;
   }
-  Value execIfElse(NodeIfCond[] ifelse) {
-    foreach (cond; ifelse)
-      if (execExpr(cond.cond).isTrue) return execExpr(cond.expr);
+  Value execIfElse(Node* node) {
+    foreach (cond; node.ifelse) if (execExpr(cond.cond).isTrue) return execExpr(cond.expr);
     return Value(T_NIL);
   }
-  Value execBlock(Node*[] block) {
+  Value execBlock(Node* node) {
     auto res = Value(T_NIL);
-    foreach (n; block) {
+    foreach (n; node.block) {
       res = execExpr(n);
       if (loop_out != NONE) break;
     }
     return res;
   }
-  Value execUnary(NodeUnary una) {
-    switch (una.op) {
-    case "!": return Value(!execExpr(una.expr).isTrue);
-    case "-": case "+":
-      return execBinary(NodeBinary(una.op, new Node(NodeType.LOAD_CONST, load_const: Value(0)), una.expr));
-    default: error("unknown operator '%s'".format(una.op)); assert(0);
-    }
+  Value execUnary(Node* node) {
+    auto o = node.binary.op, v = execExpr(node.binary.left);
+    if (o == "!") return Value(!v.isTrue); else if (v.t != T_INT) error("'%s' expected int".format(o));
+    return o == "-"? Value(-v.l) : Value(+v.l);
   }
-  Value execBinary(NodeBinary bin) {
-    auto l = execExpr(bin.left), r = execExpr(bin.right);
-    if (bin.op=="==") return Value(l == r);
-    else if (bin.op=="!=") return Value(l != r);
-    else if (bin.op=="and") return Value(l.isTrue && r.isTrue);
-    else if (bin.op=="or") return Value(l.isTrue || r.isTrue);
-    else if (l.t != T_INT || r.t != T_INT) error("'%s' expected int".format(bin.op));
-    switch (bin.op) {
+  Value execBinary(Node* node) {
+    auto o = node.binary.op, l = execExpr(node.binary.left), r = execExpr(node.binary.right);
+    /**/ if (o == "==") return Value(l == r); else if (o == "and") return Value(l.isTrue && r.isTrue);
+    else if (o == "!=") return Value(l != r); else if (o == "or")  return Value(l.isTrue || r.isTrue);
+    else if (l.t != T_INT || r.t != T_INT) error("'%s' expected int".format(o));
+    switch (o) {
     case "<": return Value(l.l < r.l); case "<=": return Value(l.l <= r.l);
     case ">": return Value(l.l > r.l); case ">=": return Value(l.l >= r.l);
     case "+": return Value(l.l + r.l); case "-":  return Value(l.l -  r.l);
     case "*": return Value(l.l * r.l); case "/":  return Value(l.l /  r.l);
-    default: error("unknown operator '%s'".format(bin.op)); assert(0);
+    default: error("unknown operator '%s'".format(o)); assert(0);
     }
   }
 }

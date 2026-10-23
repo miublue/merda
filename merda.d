@@ -27,7 +27,7 @@ string[] tokenize(string text) {
     } else if (!is_blk && chr == '#') {
       if (tok) res ~= tok;
       tok = "", is_blk = 2;
-    } else if (!is_blk && "+-*/!=<>,(){}[]".canFind(chr)) {
+    } else if (!is_blk && "+-*/!=<>,(){}[].".canFind(chr)) {
       if (tok) res ~= tok;
       res ~= ""~chr, tok = "";
     } else tok ~= chr;
@@ -185,9 +185,15 @@ class Parser {
     return new Node(NodeType.MAKE_ARRAY, block: arr);
   }
   Node* genArrayIndex(Node* arr) {
-    consume("[");
-    auto idx = NodeArrayIndex(array: arr, index: genExpr, expr: null);
-    consume("]");
+    auto idx = NodeArrayIndex(array: arr, expr: null);
+    if (toks[cur] == ".") {
+      consume("."); /* XXX: maybe check if token is valid identifier */
+      idx.index = new Node(NodeType.LOAD_CONST, load_const: Value(toks[cur++]));
+    } else {
+      consume("[");
+      idx.index = genExpr;
+      consume("]");
+    }
     if (toks[cur] == "=" && toks[cur+1] != "=") ++cur, idx.expr = genExpr;
     return new Node(NodeType.ARRAY_INDEX, array_index: idx);
   }
@@ -218,7 +224,7 @@ class Parser {
   }
   Node* genPrimary() {
     auto res = genTerm;
-    while (toks[cur] == "[") res = genArrayIndex(res);
+    while (toks[cur] == "[" || toks[cur] == ".") res = genArrayIndex(res);
     return res;
   }
 }
@@ -271,6 +277,7 @@ class Interpreter {
     if (array.t == T_MAP) {
       if (index.t != T_STR) error("map key may only be string");
       if (node.array_index.expr !is null) return array.m[index.s] = execExpr(node.array_index.expr);
+      if (index.s !in array.m) error("map key does not exist");
       return array.m[index.s];
     }
     if (![T_STR, T_ARR].canFind(array.t)) error("can only index arrays");

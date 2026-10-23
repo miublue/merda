@@ -3,7 +3,7 @@ import("common.mr")
 table = map("foo", 69, "bar", 420)
 write(table, "\n")
 write(table["foo"], "\n")
-table["baz"] = 67
+table.baz = 67
 write(table, "\n")
 
 ks = keys(table)
